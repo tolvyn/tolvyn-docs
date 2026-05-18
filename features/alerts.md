@@ -31,10 +31,10 @@ var thresholds = []int{50, 75, 90, 100}
 |---|---|
 | ≥ 50% | `info` |
 | ≥ 75% | `warning` |
-| ≥ 90% | `warning` |
+| ≥ 90% | `critical` |
 | ≥ 100% | `critical` |
 
-The two `warning` levels (75% and 90%) are distinct dedup states — alerting at 75% does not preclude alerting again at 90%.
+75% fires at `warning` severity; 90% fires at `critical` severity — allowing downstream consumers (dashboard filters, webhook routing, on-call paging) to treat them differently. Each threshold has independent dedup so alerting at 75% does not suppress the 90% critical.
 
 ### When the check runs
 
@@ -282,7 +282,7 @@ Every webhook delivery uses this envelope (`WebhookEvent`):
 }
 ```
 
-**Known gap:** `provider` and `team_id` fields exist in the struct but are not populated at the dispatch site (`anomaly.go:124-131`) — they will always be empty strings in the current implementation.
+As of the BE-04 fix, `provider` and `team_id` are populated at the dispatch site (`proxy.go meterAndRecord`).
 
 #### `alert.model_change` data
 

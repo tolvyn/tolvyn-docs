@@ -34,7 +34,7 @@ Source: `internal/kill/state.go` `IsKilled()` and `internal/proxy/proxy.go:262-2
 
 ### Check order
 
-`IsKilled` short-circuits on the first match. `all` is checked first; the remaining scopes are scanned in entry insertion order:
+`IsKilled` short-circuits on the first match. Scopes are checked in strict priority order: `all` → `team` → `service` → `agent` → `api_key`. A higher-priority scope match wins regardless of when each kill was activated:
 
 ```go
 for i := range entries {
@@ -54,7 +54,7 @@ for i := range entries {
 }
 ```
 
-An `all`-scope kill always wins. Among other scopes, the entry that appears earlier in the in-memory slice wins (this is insertion order — typically chronological, since the slice is appended to on each `Activate` call).
+Priority is by scope type, not activation time. A team-scope kill activated at 09:00 beats an agent-scope kill activated at 08:30 if both would match the request — `team` is checked before `agent`. An `all`-scope kill always wins.
 
 ---
 
@@ -119,14 +119,11 @@ The API handlers keep memory and DB in sync:
 
 Active kill switches **survive a server restart** because they are loaded from the DB at startup. Activations applied while the server was down (e.g. via direct SQL) are also picked up.
 
-### Race condition
+### Reconciliation loop
 
-If a kill is inserted via direct SQL (bypassing the API), the in-memory store does **not** see it until either:
+The store reloads from the database every 60 seconds via `StartReconciliationLoop`, so kill switches inserted directly via SQL (or restored from backup, or activated on a replica) eventually re-sync without a server restart. Worst-case staleness window is 60 seconds.
 
-- Server restart, or
-- Explicit `kill.Store.LoadFromDB(tenantID)` (no public endpoint for this — internal use only)
-
-Don't manipulate `kill_switches` directly in SQL while the server is running. Use the API.
+For tighter consistency, prefer the API — the in-memory store is updated synchronously on every `Activate` / `Deactivate` call from `POST /v1/kill` and `DELETE /v1/kill/{id}`. The reconciliation loop is a safety net, not the primary sync mechanism.
 
 ---
 

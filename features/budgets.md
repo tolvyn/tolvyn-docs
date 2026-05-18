@@ -52,18 +52,13 @@ When `mode = "hard"`, requests are rejected at the proxy **before the provider i
 
 The check is at `internal/proxy/proxy.go:306`:
 
+TOLVYN **estimates the cost of each request before sending it to the provider**. Input tokens are estimated from the request body size; output tokens use the `max_tokens` field from the request body, or `1000` if not set. If `current_spend + estimated_cost >= budget_amount`, the request is rejected immediately with HTTP 429 and a `budget_exceeded` error.
+
 ```go
-if b.Mode == "hard" && b.CurrentSpendMicrodollars >= b.AmountMicrodollars {
-    // Hard limit exceeded — reject BEFORE calling provider.
+if b.Mode == "hard" && (b.CurrentSpendMicrodollars + estimatedCostMicro) >= b.AmountMicrodollars {
+    // Hard limit would be exceeded by this request — reject BEFORE calling provider.
     w.WriteHeader(http.StatusTooManyRequests)  // 429
-    json.NewEncoder(w).Encode(map[string]string{
-        "error":     "budget_exceeded",
-        "budget_id": b.ID,
-        "scope":     b.ScopeType,
-        "limit_usd": formatUSD(b.AmountMicrodollars),
-        "spent_usd": formatUSD(b.CurrentSpendMicrodollars),
-        "message":   "Budget limit reached. Contact your administrator.",
-    })
+    // response body shown below
     return
 }
 ```
@@ -76,25 +71,19 @@ Status: **HTTP 429 Too Many Requests**.
   "budget_id": "e5f8a1b2-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
   "scope": "team",
   "limit_usd": "1000.00",
-  "spent_usd": "1000.50",
-  "message": "Budget limit reached. Contact your administrator."
+  "spent_usd": "990.20",
+  "estimated_usd": "12.40",
+  "message": "Budget limit would be exceeded by this request. Contact your administrator."
 }
 ```
+
+The `estimated_usd` field shows the pre-flight estimate that triggered the block. Because the estimate is a heuristic, actual post-request spend may differ slightly — exact spend is recorded by `meterAndRecord` after the response completes.
 
 ### What does NOT count
 
 - The blocked request **never reaches the provider** — no upstream cost is incurred
 - The blocked request **is not metered** — no row appears in the request log
 - No tokens, no provider response time, no cost — the request exists only as a 429 to the client
-
-### A subtle behavior
-
-The check is `current_spend >= amount`. Spend is checked **before** the current request's cost is added. The *first* request that pushes spend over the limit is therefore *allowed*; only the *next* request sees `current_spend >= amount` and is rejected. In practice this means:
-
-- A hard budget of `$10.00` with `$9.99` spent will allow one more request, even if that request costs `$50.00` and pushes spend to `$59.99`
-- The request *after* that will be rejected with `429`
-
-To get strict pre-flight blocking, set the budget slightly lower than the true ceiling (e.g. `$9.50` to protect a true `$10.00` limit, assuming worst-case request costs around `$0.50`).
 
 ---
 

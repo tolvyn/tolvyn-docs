@@ -228,7 +228,7 @@ HTTP 429 Too Many Requests
 }
 ```
 
-The request that *crosses* the threshold is allowed; the *next* one is blocked (same off-by-one as other hard budgets).
+The pre-flight cost estimate is applied to agent budgets as well — the request that would cross the threshold is blocked before reaching the provider, with the estimate shown in the 429 response. See [Budgets → Hard mode](budgets.md#hard-mode) for the estimation heuristic.
 
 **Soft mode:** alerts fire at 50%, 75%, 90%, and 100% thresholds (see [Alerts](alerts.md#budget-threshold-alerts)). Requests are never blocked. Useful for monitoring an agent without disrupting it.
 

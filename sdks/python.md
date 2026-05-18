@@ -2,7 +2,7 @@
 
 The `tolvyn` Python package wraps the official `openai`, `anthropic`, and `google-generativeai` SDKs so requests route through the TOLVYN proxy. Your existing code keeps working; you change the import and add a TOLVYN API key.
 
-Current version: **0.1.3**.
+Current version: **0.1.5**.
 
 ---
 
@@ -182,7 +182,7 @@ Google(
 ### Known limitations for Google
 
 - **Process-wide global state.** `google-generativeai` configures itself globally via `genai.configure()`. Creating a second `Google` instance in the same process **overwrites the first instance's configuration**. Use one `Google` per process.
-- **`fail_open` is not yet implemented for Google.** The parameter is accepted for API parity with `OpenAI` and `Anthropic` but currently has no effect — there is no automatic fallback to `generativelanguage.googleapis.com` when the TOLVYN proxy is unreachable. Requests will fail. Track [the SDK roadmap](https://github.com/tolvyn) for the fix.
+- **`fail_open` for Google is not functional** due to an upstream `google-generativeai` SDK limitation — TOLVYN cannot inject a custom `httpx` transport into it. As of v0.1.5, the SDK emits a `UserWarning` when `fail_open=True` is passed to `Google` so callers are informed that fail-open will not trigger. Pass `fail_open=False` to silence the warning.
 - The Google SDK uses REST transport (`transport="rest"`) so requests are visible to the TOLVYN proxy. gRPC transport is not supported.
 
 ---
@@ -201,7 +201,7 @@ The same parameter set applies to `OpenAI`, `AsyncOpenAI`, `Anthropic`, and `Asy
 | `agent` | `str \| None` | `None` | Sent as `X-Tolvyn-Agent` header. |
 | `user` | `str \| None` | `None` | Sent as `X-Tolvyn-User` header. |
 | `end_customer` | `str \| None` | `None` | Sent as `X-Tolvyn-End-Customer` header. |
-| `fail_open` | `bool` | `True` | Enable automatic fallback to the provider direct when the proxy is unreachable. Requires a provider key (see below). Non-functional on Google. |
+| `fail_open` | `bool` | `True` | Enable automatic fallback to the provider direct when the proxy is unreachable. Requires a provider key (see below). Non-functional on Google — UserWarning emitted as of v0.1.5 if set to True. |
 | `openai_api_key` | `str \| None` | `None` (env: `OPENAI_API_KEY`) | Provider key used for fail-open fallback. `OpenAI` / `AsyncOpenAI` only. |
 | `anthropic_api_key` | `str \| None` | `None` (env: `ANTHROPIC_API_KEY`) | Provider key used for fail-open fallback. `Anthropic` / `AsyncAnthropic` only. |
 | `google_api_key` | `str \| None` | `None` (env: `GOOGLE_API_KEY`) | Provider key — `Google` only. Currently accepted but unused (see Google limitations). |
@@ -292,7 +292,7 @@ Requests that fall back to the provider directly **bypass the TOLVYN proxy**. Th
 
 ### Note on Google
 
-The `fail_open` parameter on the `Google` class is currently a no-op. There is no fallback transport for Google requests when the proxy is unreachable.
+The `fail_open` parameter on the `Google` class is currently a no-op. There is no fallback transport for Google requests when the proxy is unreachable. The SDK emits a `UserWarning` on construction if `fail_open=True` (v0.1.5+).
 
 ---
 
@@ -341,7 +341,7 @@ asyncio.run(main())
 
 Async fail-open uses `httpx.AsyncHTTPTransport` and triggers under the same conditions as the sync transport.
 
-There is no `AsyncGoogle` class — `google-generativeai` uses a process-global configuration, and its own async surface (`generate_content_async`) is used through the same `Google` instance.
+There is no `AsyncGoogle` class — `google-generativeai` uses a process-global configuration, and its own async surface (`generate_content_async`) is used through the same `Google` instance. As of v0.1.5, the SDK emits a `UserWarning` when a second `Google` instance is created in the same process.
 
 ---
 
@@ -349,7 +349,9 @@ There is no `AsyncGoogle` class — `google-generativeai` uses a process-global 
 
 | Version | Notes |
 |---|---|
-| 0.1.3 | Current. OpenAI + Anthropic + Google (Google fail-open not yet implemented). |
+| 0.1.5 | Current. Google `UserWarning` on `fail_open=True` (PY-01); multi-instance `UserWarning` (PY-03). |
+| 0.1.4 | Fail-open URL composition fix (PY-02); deduplicate `_build_tolvyn_headers` to `_config.py` (PY-06); remove dead code (PY-04). |
+| 0.1.3 | OpenAI + Anthropic + Google. |
 
 The package is in early development. APIs may change between minor versions until 1.0.
 

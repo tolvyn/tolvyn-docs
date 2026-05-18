@@ -101,11 +101,9 @@ Then, outside the transaction:
 
 The `-1 millisecond` trick on `effective_to` ensures the old row closes strictly before the new row opens — no overlapping ranges, no double-pricing windows.
 
-### Known gap
+### Both paths notify customers
 
-**Approving a scraper-detected candidate does NOT currently notify affected tenants.** Customer notifications fire only when an operator uses the manual `POST /v1/operator/models/changes` path. This is a real gap to be aware of — if your operator regularly approves candidates via the dashboard, your customers won't get the in-app alert or email about the change until the model_change detector picks it up via service-level cost shifts.
-
-Workaround until this is fixed: after approving a candidate, also create the same change via `POST /v1/operator/models/changes` so the notification path fires.
+Both paths — manual operator entry and scraper-candidate approval — trigger customer notifications. `HandleOperatorApproveCandidate` calls `alert.NotifyPricingChange` in a goroutine after committing the price update (BE-01 fix), matching the manual-entry path's behavior.
 
 ---
 
@@ -127,7 +125,7 @@ Severity:
 | `percent_change > 5%` | `warning` |
 | Otherwise | `info` |
 
-No webhook is dispatched — there is no `pricing_change` webhook event in the schema. Pricing change alerts surface in-app and (above-threshold cases) by email.
+Pricing change notifications are also delivered via webhook using the `alert.pricing_change` event type. See the [Webhooks documentation](webhooks.md#alert-pricing_change) for the payload schema.
 
 ---
 

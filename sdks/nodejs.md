@@ -2,7 +2,7 @@
 
 The `tolvyn` npm package wraps the official `openai`, `@anthropic-ai/sdk`, and `@google/generative-ai` SDKs so requests route through the TOLVYN proxy. Existing application code stays the same; you change the import and add a TOLVYN API key.
 
-Current version: **1.0.4**.
+Current version: **1.0.6**.
 
 ---
 
@@ -12,7 +12,7 @@ Current version: **1.0.4**.
 npm install tolvyn
 ```
 
-The package declares hard dependencies on `openai ^4.0.0`, `@anthropic-ai/sdk ^0.20.0`, and `@google/generative-ai ^0.21.0`. There are no peer dependencies — they are pulled in automatically.
+The package declares hard dependencies on `openai ^4.0.0` and `@anthropic-ai/sdk ^0.20.0`. As of v1.0.6, `@google/generative-ai ^0.21.0` is an **optional `peerDependency`** — install it alongside `tolvyn` only if you need the `Google` client; OpenAI/Anthropic-only consumers can skip it to reduce bundle size.
 
 The package ships both ESM and CJS builds. The `exports` field in `package.json` resolves to the right format based on your module system:
 
@@ -157,7 +157,7 @@ interface TolvynGoogleOptions {
 }
 ```
 
-The exported `Google` class is internally named `TolvynGoogle` and extends `GoogleGenerativeAI`. `getGenerativeModel()` is overridden to inject the TOLVYN proxy URL and attribution headers on every call.
+As of v1.0.6, the class is named `Google` in source (was `TolvynGoogle` internally before — stack traces and `constructor.name` now show `Google`). It extends `GoogleGenerativeAI`. `getGenerativeModel()` is overridden to inject the TOLVYN proxy URL and attribution headers on every call.
 
 ### Google differences from OpenAI / Anthropic
 
@@ -167,7 +167,7 @@ The exported `Google` class is internally named `TolvynGoogle` and extends `Goog
 
 ### Known Google limitations
 
-- **`failOpen` is not yet implemented for Google.** The parameter is accepted for API parity but currently has no effect. There is no automatic fallback to `generativelanguage.googleapis.com` when the TOLVYN proxy is unreachable; requests fail. Track the SDK roadmap on GitHub for the fix.
+- **Google fail-open works as of v1.0.6.** When `failOpen: true` and `googleApiKey` is set, the SDK wraps `generateContent` so proxy-unreachable errors retry against a direct `GoogleGenerativeAI` client. Unlike Python, the Node SDK is not constrained by process-global state — no warnings are emitted. Trigger conditions match OpenAI/Anthropic (see [Fail-open behavior](#fail-open-behavior)).
 
 ---
 
@@ -226,7 +226,7 @@ All six are stripped by the TOLVYN proxy before the request is forwarded to Open
 
 ## Fail-open behavior
 
-Fail-open is enabled by default (`failOpen: true`). When the SDK cannot reach `proxy.tolvyn.io`, it retries the request directly against the provider using your provider key. A message is written to `console.error`:
+Fail-open is enabled by default (`failOpen: true`). When the SDK cannot reach `proxy.tolvyn.io`, it retries the request directly against the provider using your provider key (for Google, requires v1.0.6+; earlier versions silently ignored `failOpen`). A message is written to `console.error`:
 
 ```
 TOLVYN proxy unreachable — routing direct to OpenAI (fail-open)
@@ -352,9 +352,11 @@ TypeScript with `"module": "commonjs"` or `"node16"`/`"nodenext"` works without 
 
 | Version | Notes |
 |---|---|
-| 1.0.4 | Current. OpenAI + Anthropic + Google. Node 18+. Dual ESM/CJS build. Google fail-open not yet implemented. |
+| 1.0.6 | Current. Google fail-open functional (ND-01); class renamed `TolvynGoogle` → `Google` (ND-05); `@google/generative-ai` is now an optional peer dependency (ND-08). |
+| 1.0.5 | Fail-open URL composition fix (ND-02); deduplicate `makeFailOpenFetch` so client.ts imports from failopen.ts (ND-03); trailing slash on Google proxy URL (ND-07). |
+| 1.0.4 | OpenAI + Anthropic + Google. Node 18+. Dual ESM/CJS build. |
 
-The Node SDK reached `1.0` ahead of the Python SDK (currently `0.1.3`) — the underlying provider SDKs (`openai`, `@anthropic-ai/sdk`) have stable APIs that gave Node a faster path to a stable public surface.
+The Node SDK reached `1.0` ahead of the Python SDK (currently `0.1.5`) — the underlying provider SDKs (`openai`, `@anthropic-ai/sdk`) have stable APIs that gave Node a faster path to a stable public surface.
 
 ---
 

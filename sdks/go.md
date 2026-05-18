@@ -2,7 +2,7 @@
 
 The `tolvyn-go` module wraps the official `github.com/openai/openai-go`, `github.com/anthropics/anthropic-sdk-go`, and `github.com/google/generative-ai-go` clients so requests route through the TOLVYN proxy. Existing code stays the same; you change the constructor and add a TOLVYN API key.
 
-Current published tag: **v0.1.1**.
+Current published tag: **v0.1.3**.
 
 ---
 
@@ -168,7 +168,7 @@ All three sub-packages share the same `tolvyn.ClientOptions` struct.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `TolvynAPIKey` | `string` | `""` (env: `TOLVYN_API_KEY`) | TOLVYN API key (`tlv_live_...` / `tlv_test_...`). Required — see panic note below. |
+| `TolvynAPIKey` | `string` | `""` (env: `TOLVYN_API_KEY`) | TOLVYN API key (`tlv_live_...` / `tlv_test_...`). Required — process exits via `log.Fatal` if also unset (see note below). |
 | `ProxyURL` | `string` | provider-specific default; env: `TOLVYN_PROXY_URL` | Override the proxy URL. Defaults: `https://proxy.tolvyn.io/v1/proxy/openai/`, `.../anthropic/`, `.../google/`. `Defaults()` automatically appends a trailing `/` if missing. |
 | `Team` | `string` | `""` | Sent as `X-Tolvyn-Team`. |
 | `Service` | `string` | `""` | Sent as `X-Tolvyn-Service`. |
@@ -191,9 +191,9 @@ The boolean defaults to its Go zero value, `false`. That zero value means **fail
 | `false` (zero) | `""` | No fail-open (no key to fall back with); proxy errors surface |
 | `true` | (any) | Fail-open disabled; proxy errors surface |
 
-### `TolvynAPIKey` panic note
+### `TolvynAPIKey` fatal note
 
-If neither the `TolvynAPIKey` field nor the `TOLVYN_API_KEY` environment variable is set, `ClientOptions.Defaults()` calls `panic("tolvyn: TolvynAPIKey is required (or set TOLVYN_API_KEY env var)")`. This is non-idiomatic Go — `NewClient` for OpenAI and Anthropic does not return an `error`, so missing-key configuration crashes the process. Always set the key before calling `NewClient`. The Google constructor returns an error from `genai.NewClient`, but the panic from `Defaults()` happens first.
+If neither the `TolvynAPIKey` field nor the `TOLVYN_API_KEY` environment variable is set, `ClientOptions.Defaults()` calls `log.Fatal("tolvyn: TolvynAPIKey is required (set TOLVYN_API_KEY env var)")` — a clean error message, no stack trace, and the process exits. As of v0.1.3, this replaces the earlier `panic`. The `NewClient` signature is unchanged for backwards compatibility, so always set the key before calling `NewClient`.
 
 ---
 
@@ -266,7 +266,7 @@ fallbackURL := strings.TrimSuffix(t.providerURL, "/") + "/" + strings.TrimPrefix
 
 This produces correct fallback URLs for Anthropic (where the underlying SDK already builds paths like `/v1/messages`).
 
-**Known issue for OpenAI:** the alpha `openai-go` SDK constructs request paths that, after the proxy-prefix strip, lack the `/v1/` segment OpenAI's API requires. The fallback URL becomes `https://api.openai.com/chat/completions` instead of `https://api.openai.com/v1/chat/completions`. Fail-open for OpenAI may return `404` from OpenAI's real API. Track and verify before relying on it in production; set `DisableFailOpen: true` and monitor TOLVYN uptime if your OpenAI requests must be guaranteed available.
+**As of v0.1.2, OpenAI fail-open produces the correct URL** (`https://api.openai.com/v1/chat/completions`). The `providerDirectURL` constant was corrected so the path-strip + URL composition yields a valid OpenAI endpoint. Anthropic was unaffected (its native paths already include `/v1/`).
 
 ### Metering during fail-open
 
@@ -289,7 +289,7 @@ client := tolvynopenai.NewClient(tolvyn.ClientOptions{
 
 | Variable | Used for | Required |
 |---|---|---|
-| `TOLVYN_API_KEY` | Fills `TolvynAPIKey` if the field is empty | Yes — panics if also unset |
+| `TOLVYN_API_KEY` | Fills `TolvynAPIKey` if the field is empty | Yes — process exits via `log.Fatal` if also unset |
 | `TOLVYN_PROXY_URL` | Fills `ProxyURL` if the field is empty | No |
 | `OPENAI_API_KEY` | Fills `ProviderAPIKey` for the openai sub-package | No |
 | `ANTHROPIC_API_KEY` | Fills `ProviderAPIKey` for the anthropic sub-package | No |
@@ -354,7 +354,7 @@ The Go Google sub-package is closer to OpenAI/Anthropic in shape than the Python
 - `Client` embeds `*genai.Client` directly. All `genai` methods (`GenerativeModel`, `ListModels`, etc.) are available without forwarding.
 - `Close()` is exposed (from the embedded `*genai.Client`) — call `defer client.Close()` to release resources.
 
-The fail-open gap is the same across all three language SDKs: no Google fail-open is implemented yet.
+**As of v0.1.3, Google fail-open is implemented.** When `ProviderAPIKey` is set and `DisableFailOpen` is false, the Google sub-package uses `tolvyn.NewFailOpenTransport` (same machinery as OpenAI/Anthropic) and falls back to `https://generativelanguage.googleapis.com/` if the proxy is unreachable.
 
 ---
 
@@ -362,10 +362,10 @@ The fail-open gap is the same across all three language SDKs: no Google fail-ope
 
 | Version | Notes |
 |---|---|
-| v0.1.1 | Current. Renamed `FailOpen bool` → `DisableFailOpen bool` so the zero value enables fail-open by default. Added `BoolPtr` helper (currently unused). |
-| v0.1.0 | Initial release. OpenAI + Anthropic + Google. Google fail-open not implemented. |
-
-**Note on the `Version` constant:** the source still declares `const Version = "0.1.0"` in `tolvyn.go`. The published tag is `v0.1.1`. The constant will be bumped in the next release.
+| v0.1.3 | Current. Google fail-open transport (GO-02); `Defaults()` uses `log.Fatal` instead of `panic` (GO-03); trailing-slash audit (GO-07). |
+| v0.1.2 | OpenAI fail-open URL fix (GO-01); `Version` constant updated; `BoolPtr` removed (GO-05). |
+| v0.1.1 | Renamed `FailOpen bool` → `DisableFailOpen bool` so the zero value enables fail-open by default. |
+| v0.1.0 | Initial release. OpenAI + Anthropic + Google. |
 
 The SDK is in early development. APIs may change between minor versions until 1.0.
 

@@ -70,8 +70,14 @@ Source: `analyzeSmallTokenRequests`.
 | `claude-sonnet-4-6` | `claude-haiku-4-5` | 75% |
 | `claude-3-opus` | `claude-haiku-4-5` | 95% |
 | `claude-3-sonnet` | `claude-haiku-4-5` | 70% |
+| `claude-opus-4-6` | `claude-sonnet-4-6` | 70% |
+| `claude-opus-4-7` | `claude-sonnet-4-6` | 70% |
+| `o1` | `o3-mini` | 85% |
+| `o1-pro` | `o1-mini` | 95% |
+| `gemini-2.5-pro` | `gemini-2.5-flash` | 80% |
+| `gemini-2.0-ultra` | `gemini-2.0-flash` | 85% |
 
-If your most-used expensive model isn't in this map (e.g. `claude-opus-4-7`, `gpt-5`, `o1-pro`), it won't trigger a downgrade finding — the map needs updating in source.
+If your most-used expensive model isn't in this map (e.g. `gpt-5` when released), it won't trigger a downgrade finding — the map needs updating in source.
 
 Example finding text:
 
@@ -153,9 +159,9 @@ Source: `analyzeIdleModels`.
 |---|---|
 | Model had activity in the last 90 days | Required |
 | Model has had 0 requests in the last 30 days | Required |
-| Per-model "savings" estimate | `total_active_budget / count(idle_models)` |
+| Savings amount | `$0.00` |
 
-The "savings" value for an idle model is **not** a real dollar amount. It's a budget-share proxy: total active budget divided across all idle models. The intent is to surface model IDs that may have orphaned budgets or service configurations, not to predict literal dollars saved by removing them.
+Idle-model findings carry **no dollar estimate** — the previous budget-share proxy metric was removed (BE-15) because it presented a fabricated number. The finding is still surfaced with the model name and idle period; only the misleading savings figure is gone.
 
 Example finding text:
 
@@ -244,7 +250,7 @@ The window is always "last 30 days". You can't run analysis for a custom date ra
 
 ### Hardcoded model lists
 
-The downgrade map in `rules.go:28-39` is a hardcoded Go map. New expensive models won't show downgrade findings until added in source. If you see expensive usage of `claude-opus-4-7` (released after this map was written) and want a finding, file an issue.
+The downgrade map covers 13 model families. Models released after the last update still need to be added in source — file an issue if you see expensive usage of an unmapped model.
 
 ---
 

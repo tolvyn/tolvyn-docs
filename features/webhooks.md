@@ -80,19 +80,18 @@ Errors:
 
 ## Event types
 
-Source: `internal/webhook/types.go:5-9`. Three real event types plus one synthetic test event:
+Source: `internal/webhook/types.go`. Four real event types plus one synthetic test event:
 
 | Event type | When dispatched |
 |---|---|
 | `alert.budget_threshold` | Budget utilization crosses 50/75/90/100% |
 | `alert.cost_anomaly` | Single request costs ≥10× recent service average |
 | `alert.model_change` | Service switches model family with ≥2× cost change |
+| `alert.pricing_change` | A provider's published price for a model the tenant uses changes |
 | `alert.all` | Wildcard subscription — receives all of the above |
 | `webhook.test` | Sent by `POST /v1/webhooks/{id}/test` only — not a real alert |
 
 A tenant subscribing to `alert.all` will be notified of any new event types added later. No code change required.
-
-**Note:** Pricing change alerts (`pricing_change` in the `alerts` table) **do not** have a corresponding webhook event. They surface only in-app and by email. See [Alerts](alerts.md#pricing-change-alerts) for details.
 
 ---
 
@@ -144,7 +143,7 @@ Source: `CostAnomalyData` struct.
 }
 ```
 
-**Known:** `provider` and `team_id` fields are present in the struct but never populated at the dispatch site (`anomaly.go`). They will always be empty strings.
+As of the BE-04 fix, the `provider` and `team_id` fields are populated at the dispatch site (`proxy.go meterAndRecord`).
 
 ### `alert.model_change`
 
@@ -162,7 +161,35 @@ Source: `ModelChangeData` struct.
 }
 ```
 
-**Known:** `provider` is not populated at the dispatch site.
+As of the BE-05 fix, the `provider` field is populated at the dispatch site (`model_change.go`).
+
+### `alert.pricing_change`
+
+Source: `PricingChangeData` struct. Fires when a provider's published price for a model the tenant has used in the last 30 days changes.
+
+```json
+{
+  "model_id": "gpt-4o",
+  "provider": "openai",
+  "field_changed": "input",
+  "previous_value": 2.5,
+  "new_value": 2.0,
+  "percent_change": -20.0,
+  "impact_estimate_usd": "4.2000",
+  "effective_date": "2026-06-01"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `model_id` | string | Provider's model identifier |
+| `provider` | string | `openai` / `anthropic` / `google` |
+| `field_changed` | string | `input`, `output`, or `cached` |
+| `previous_value` | number | Old price (USD per million tokens) |
+| `new_value` | number | New price (USD per million tokens) |
+| `percent_change` | number | `(new - prev) / prev * 100`; negative means price dropped |
+| `impact_estimate_usd` | string | Per-tenant monthly impact estimate based on last 30 days' usage; negative = savings |
+| `effective_date` | string | ISO 8601 date the new price takes effect |
 
 ### `webhook.test`
 
@@ -272,6 +299,8 @@ TOLVYN retries failed deliveries up to **5 attempts total** with the following i
 | 3rd | 30 minutes |
 | 4th | 2 hours |
 | 5th | (no more retries — delivery marked permanently failed) |
+
+Each interval has **±10% random jitter** so a fleet of tenants doesn't all retry at the same wall-clock instant after a receiver recovers.
 
 After 5 attempts the delivery is marked as `last_status = 'failed'` on the endpoint and `next_retry_at` is set to `NULL`. No further attempts.
 
@@ -391,7 +420,7 @@ Plan rotation as a deliberate operation; an event in flight when you delete the 
 | Active endpoints per tenant | 10 |
 | Max attempts per delivery | 5 |
 | Delivery timeout | 5 seconds |
-| Event types currently supported | 3 (`alert.budget_threshold`, `alert.cost_anomaly`, `alert.model_change`) |
+| Event types currently supported | 4 (`alert.budget_threshold`, `alert.cost_anomaly`, `alert.model_change`, `alert.pricing_change`) |
 
 ---
 
