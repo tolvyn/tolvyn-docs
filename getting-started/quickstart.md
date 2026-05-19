@@ -75,7 +75,12 @@ pip install tolvyn
 ```python
 from tolvyn import OpenAI
 
-client = OpenAI(tolvyn_api_key="tlv_live_aB3xK9mP2vQ8nF4hR7sT1uW5yE6dC0gJ")
+client = OpenAI(
+    tolvyn_api_key="tlv_live_aB3xK9mP2vQ8nF4hR7sT1uW5yE6dC0gJ",
+    openai_api_key="sk-...",        # recommended: enables automatic fail-open
+    team="engineering",
+    service="my-app",
+)
 
 response = client.chat.completions.create(
     model="gpt-4o",
@@ -95,6 +100,9 @@ import { OpenAI } from 'tolvyn';
 
 const client = new OpenAI({
   tolvynApiKey: 'tlv_live_aB3xK9mP2vQ8nF4hR7sT1uW5yE6dC0gJ',
+  openAIApiKey: 'sk-...',           // recommended: enables automatic fail-open
+  team: 'engineering',
+  service: 'my-app',
 });
 
 const response = await client.chat.completions.create({
@@ -124,7 +132,10 @@ import (
 
 func main() {
     client := tolvynopenai.NewClient(tolvyn.ClientOptions{
-        TolvynAPIKey: "tlv_live_aB3xK9mP2vQ8nF4hR7sT1uW5yE6dC0gJ",
+        TolvynAPIKey:   "tlv_live_aB3xK9mP2vQ8nF4hR7sT1uW5yE6dC0gJ",
+        ProviderAPIKey: "sk-...",        // recommended: enables automatic fail-open
+        Team:           "engineering",
+        Service:        "my-app",
     })
 
     resp, err := client.Chat.Completions.New(context.Background(), oai.ChatCompletionNewParams{
@@ -160,7 +171,48 @@ curl https://proxy.tolvyn.io/v1/proxy/openai/v1/chat/completions \
   }'
 ```
 
-For Anthropic, replace `openai` with `anthropic` in the URL. For Google, replace with `google`.
+> **Why add your provider key?** If TOLVYN's proxy is unreachable, the SDK
+> automatically retries the request directly against the provider. Your AI
+> never stops working. Omit it only if you want hard failure on TOLVYN outages.
+
+### Using Anthropic or Google instead?
+
+Replace the import and constructor.
+
+**Anthropic (Python):**
+
+```python
+from tolvyn import Anthropic
+
+client = Anthropic(
+    tolvyn_api_key="tlv_live_...",
+    anthropic_api_key="sk-ant-...",   # recommended: enables automatic fail-open
+    team="engineering",
+    service="my-app",
+)
+```
+
+**Google (Python, requires the `[google]` extra):**
+
+```python
+from tolvyn import Google
+
+goog = Google(tolvyn_api_key="tlv_live_...")
+model = goog.GenerativeModel("gemini-1.5-flash")
+```
+
+**Proxy mode (any language, any provider):**
+
+```bash
+# OpenAI
+curl https://proxy.tolvyn.io/v1/proxy/openai/v1/chat/completions ...
+
+# Anthropic
+curl https://proxy.tolvyn.io/v1/proxy/anthropic/v1/messages ...
+
+# Google
+curl https://proxy.tolvyn.io/v1/proxy/google/v1beta/models/...
+```
 
 ---
 
